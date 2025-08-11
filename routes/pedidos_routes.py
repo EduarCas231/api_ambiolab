@@ -4,7 +4,7 @@ from auth import verificar_token_request
 
 pedidos_bp = Blueprint('pedidos', __name__)
 
-@pedidos_bp.route('', methods=['GET'])
+@pedidos_bp.route('/pedidos', methods=['GET'])
 def obtener_pedidos():
     db = None
     try:
@@ -25,7 +25,7 @@ def obtener_pedidos():
         if db:
             db.close()
 
-@pedidos_bp.route('/<int:id_pedidos>', methods=['GET'])
+@pedidos_bp.route('/pedidos/<int:id_pedidos>', methods=['GET'])
 def obtener_pedido_por_id(id_pedidos):
     db = None
     try:
@@ -42,7 +42,7 @@ def obtener_pedido_por_id(id_pedidos):
         if db:
             db.close()
 
-@pedidos_bp.route('', methods=['POST'])
+@pedidos_bp.route('/pedidos', methods=['POST'])
 def crear_pedido():
     db = None
     try:
@@ -75,7 +75,7 @@ def crear_pedido():
         if db:
             db.close()
 
-@pedidos_bp.route('/<int:id_pedidos>', methods=['PUT'])
+@pedidos_bp.route('/pedidos/<int:id_pedidos>', methods=['PUT'])
 def actualizar_pedido(id_pedidos):
     db = None
     try:
@@ -113,7 +113,7 @@ def actualizar_pedido(id_pedidos):
         if db:
             db.close()
 
-@pedidos_bp.route('/<int:id_pedidos>', methods=['DELETE'])
+@pedidos_bp.route('/pedidos/<int:id_pedidos>', methods=['DELETE'])
 def eliminar_pedido(id_pedidos):
     db = None
     try:

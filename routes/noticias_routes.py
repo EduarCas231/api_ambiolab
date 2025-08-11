@@ -3,7 +3,7 @@ from database import get_db_connection_usuarios
 
 noticias_bp = Blueprint('noticias', __name__)
 
-@noticias_bp.route('', methods=['POST'])
+@noticias_bp.route('/news', methods=['POST'])
 def crear_noticia():
     db = None
     try:
@@ -31,7 +31,7 @@ def crear_noticia():
         if db:
             db.close()
 
-@noticias_bp.route('', methods=['GET'])
+@noticias_bp.route('/news', methods=['GET'])
 def obtener_todas_las_noticias():
     db = None
     try:
@@ -51,7 +51,7 @@ def obtener_todas_las_noticias():
         if db:
             db.close()
 
-@noticias_bp.route('/<int:id>', methods=['PUT'])
+@noticias_bp.route('/news/<int:id>', methods=['PUT'])
 def actualizar_noticia(id):
     db = None
     try:
@@ -79,7 +79,7 @@ def actualizar_noticia(id):
         if db:
             db.close()
 
-@noticias_bp.route('/<int:id>', methods=['DELETE'])
+@noticias_bp.route('/news/<int:id>', methods=['DELETE'])
 def eliminar_noticia(id):
     db = None
     try:

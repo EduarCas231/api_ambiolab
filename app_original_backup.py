@@ -47,7 +47,7 @@ def verificar_token_request():
 # -------------------- CONEXIONES --------------------
 def get_db_connection_usuarios():
     return pymysql.connect(
-        host="189.136.70.8",
+        host="189.136.81.161",
         user="adminfull",
         password="222310342",
         database="ambiolab",
@@ -57,7 +57,7 @@ def get_db_connection_usuarios():
 
 def get_db_connection_visitas():
     return pymysql.connect(
-        host="189.136.67.84",
+        host="189.136.81.161",
         user="AdminTics",
         password="AdminTics0012",
         database="labsa",
@@ -101,6 +101,82 @@ def register():
         if db:
             db.close()
 
+@app.route('/users/<int:id>', methods=['PUT'])
+def actualizar_usuario(id):
+    data = request.json
+    nombre = data.get('nombre')
+    appaterno = data.get('app')
+    apmaterno = data.get('apm')
+    correo = data.get('correo')
+    password = data.get('password')
+    tipo = data.get('tipo')
+
+    db = None
+    try:
+        db = get_db_connection_usuarios()
+        with db.cursor() as cursor:
+            cursor.execute("SELECT id_user FROM users WHERE id_user = %s", (id,))
+            if not cursor.fetchone():
+                return jsonify({'error': 'Usuario no encontrado'}), 404
+
+            if correo:
+                cursor.execute("SELECT id_user FROM users WHERE correo = %s AND id_user != %s", (correo, id))
+                if cursor.fetchone():
+                    return jsonify({'error': 'Correo ya registrado'}), 400
+
+            updates = []
+            params = []
+            
+            if nombre:
+                updates.append("nombre = %s")
+                params.append(nombre)
+            if appaterno:
+                updates.append("app = %s")
+                params.append(appaterno)
+            if apmaterno:
+                updates.append("apm = %s")
+                params.append(apmaterno)
+            if correo:
+                updates.append("correo = %s")
+                params.append(correo)
+            if password:
+                updates.append("password = %s")
+                params.append(generate_password_hash(password))
+            if tipo is not None:
+                updates.append("tipo = %s")
+                params.append(tipo)
+
+            if not updates:
+                return jsonify({'error': 'No hay datos para actualizar'}), 400
+
+            params.append(id)
+            query = f"UPDATE users SET {', '.join(updates)} WHERE id_user = %s"
+            cursor.execute(query, params)
+            db.commit()
+
+            return jsonify({'message': 'Usuario actualizado exitosamente'}), 200
+    except Exception as e:
+        return jsonify({'error': 'Error en la base de datos', 'detalle': str(e)}), 500
+    finally:
+        if db:
+            db.close()
+
+@app.route('/users', methods=['GET'])
+def obtener_usuarios():
+    db = None
+    try:
+        db = get_db_connection_usuarios()
+        with db.cursor() as cursor:
+            query = "SELECT id_user, nombre, app, apm, correo, tipo FROM users"
+            cursor.execute(query)
+            usuarios = cursor.fetchall()
+            return jsonify(usuarios), 200
+    except Exception as e:
+        return jsonify({'error': 'Error en la base de datos', 'detalle': str(e)}), 500
+    finally:
+        if db:
+            db.close()
+
 @app.route('/auth/login', methods=['POST'])
 def login():
     data = request.json
@@ -136,6 +212,7 @@ def login():
     finally:
         if db:
             db.close()
+
 # --------------------- VALIDACION DE TOKEN ---------------
 @app.route('/auth/verify', methods=['GET'])
 def verify_token():
@@ -285,16 +362,18 @@ def actualizar_visita(id):
         departamento = data.get('departamento')
         detalle = data.get('detalle')
         codigo = data.get('codigo')
+        escaneado = data.get('escaneado')
+        fecha_escaneo = data.get('fecha_escaneo')
 
         db = get_db_connection_usuarios()
         with db.cursor() as cursor:
             query = """
                 UPDATE visitas
                 SET nombre=%s, apellidoPaterno=%s, apellidoMaterno=%s, lugar=%s,
-                    fecha=%s, departamento=%s, detalle=%s, codigo=%s
+                    fecha=%s, departamento=%s, detalle=%s, codigo=%s, escaneado=%s, fecha_escaneo=%s
                 WHERE id=%s
             """
-            cursor.execute(query, (nombre, apellidoPaterno, apellidoMaterno, lugar, fecha, departamento, detalle, codigo, id))
+            cursor.execute(query, (nombre, apellidoPaterno, apellidoMaterno, lugar, fecha, departamento, detalle, codigo, escaneado, fecha_escaneo, id))
             db.commit()
 
             if cursor.rowcount == 0:
@@ -312,18 +391,34 @@ def eliminar_visita(id):
     db = None
     try:
         db = get_db_connection_usuarios()
-        with db.cursor() as cursor:
-            query = "DELETE FROM visitas WHERE id = %s"
-            cursor.execute(query, (id,))
-            db.commit()
-
-            if cursor.rowcount == 0:
-                return jsonify({'error': 'Visita no encontrada'}), 404
-
-        return jsonify({'message': 'Visita eliminada'}), 200
+        cursor = db.cursor()
+        
+        # Verificar si la visita existe
+        cursor.execute("SELECT id FROM visitas WHERE id = %s", (id,))
+        if not cursor.fetchone():
+            return jsonify({'error': 'Visita no encontrada'}), 404
+        
+        # Iniciar transacción explícita
+        db.begin()
+        
+        # Eliminar notificaciones asociadas
+        cursor.execute("DELETE FROM notificaciones WHERE visita_id = %s", (id,))
+        
+        # Eliminar la visita
+        cursor.execute("DELETE FROM visitas WHERE id = %s", (id,))
+        
+        # Confirmar los cambios
+        db.commit()
+        
+        return jsonify({'message': 'Visita eliminada correctamente'}), 200
     except Exception as e:
-        return jsonify({'error': 'Error en la base de datos', 'detalle': str(e)}), 500
+        # Revertir cambios en caso de error
+        if db:
+            db.rollback()
+        return jsonify({'error': f'Error al eliminar la visita: {str(e)}'}), 500
     finally:
+        if cursor:
+            cursor.close()
         if db:
             db.close()
 
@@ -502,6 +597,110 @@ def marcar_notificacion_leida(id):
     finally:
         if db:
             db.close()
+
+@app.route('/notificaciones/<int:id>', methods=['DELETE'])
+def eliminar_notificacion(id):
+    db = None
+    cursor = None
+    try:
+        print(f"[DEBUG] Iniciando eliminación de notificación ID: {id}")
+        
+        db = get_db_connection_usuarios()
+        cursor = db.cursor()
+        
+        # Verificar si la notificación existe
+        cursor.execute("SELECT id, visita_id FROM notificaciones WHERE id = %s", (id,))
+        notificacion = cursor.fetchone()
+        
+        if not notificacion:
+            print(f"[DEBUG] Notificación ID {id} no encontrada")
+            return jsonify({'error': 'Notificación no encontrada'}), 404
+        
+        print(f"[DEBUG] Notificación encontrada: {notificacion}")
+        
+        # Iniciar transacción
+        db.begin()
+        
+        try:
+            # Primero establecer visita_id a NULL para evitar restricción de clave foránea
+            print(f"[DEBUG] Estableciendo visita_id a NULL para notificación ID: {id}")
+            cursor.execute("UPDATE notificaciones SET visita_id = NULL WHERE id = %s", (id,))
+            
+            # Luego eliminar la notificación
+            print(f"[DEBUG] Eliminando notificación ID: {id}")
+            cursor.execute("DELETE FROM notificaciones WHERE id = %s", (id,))
+            
+            # Confirmar transacción
+            db.commit()
+            print(f"[DEBUG] Transacción confirmada, notificación eliminada correctamente")
+            
+            return jsonify({"message": "Notificación eliminada correctamente"}), 200
+        except Exception as e:
+            # Si hay error, hacer rollback
+            db.rollback()
+            print(f"[ERROR] Error al eliminar notificación: {str(e)}")
+            raise e
+    except Exception as e:
+        print(f"[ERROR] Excepción general: {str(e)}")
+        return jsonify({'error': 'Error en la base de datos', 'detalle': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if db:
+            db.close()
+        print(f"[DEBUG] Proceso de eliminación finalizado")
+
+@app.route('/notificaciones/visita/<int:visita_id>', methods=['DELETE'])
+def eliminar_notificaciones_por_visita(visita_id):
+    db = None
+    cursor = None
+    try:
+        print(f"[DEBUG] Iniciando eliminación de notificaciones para visita ID: {visita_id}")
+        
+        db = get_db_connection_usuarios()
+        cursor = db.cursor()
+        
+        # Verificar si hay notificaciones asociadas
+        cursor.execute("SELECT COUNT(*) as count FROM notificaciones WHERE visita_id = %s", (visita_id,))
+        count = cursor.fetchone()['count']
+        
+        print(f"[DEBUG] Encontradas {count} notificaciones asociadas a visita ID: {visita_id}")
+        
+        if count == 0:
+            return jsonify({"message": "No hay notificaciones asociadas a esta visita"}), 200
+        
+        # Iniciar transacción
+        db.begin()
+        
+        try:
+            # Primero establecer visita_id a NULL para evitar restricción de clave foránea
+            print(f"[DEBUG] Estableciendo visita_id a NULL para notificaciones de visita ID: {visita_id}")
+            cursor.execute("UPDATE notificaciones SET visita_id = NULL WHERE visita_id = %s", (visita_id,))
+            
+            # Luego eliminar las notificaciones
+            print(f"[DEBUG] Eliminando notificaciones con visita_id NULL")
+            cursor.execute("DELETE FROM notificaciones WHERE visita_id IS NULL")
+            deleted_count = cursor.rowcount
+            
+            # Confirmar transacción
+            db.commit()
+            print(f"[DEBUG] Transacción confirmada, {deleted_count} notificaciones eliminadas")
+            
+            return jsonify({"message": f"{deleted_count} notificaciones eliminadas correctamente"}), 200
+        except Exception as e:
+            # Si hay error, hacer rollback
+            db.rollback()
+            print(f"[ERROR] Error al eliminar notificaciones: {str(e)}")
+            raise e
+    except Exception as e:
+        print(f"[ERROR] Excepción general: {str(e)}")
+        return jsonify({'error': 'Error en la base de datos', 'detalle': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if db:
+            db.close()
+        print(f"[DEBUG] Proceso de eliminación finalizado")
 
 # -------------------- VISITAS --------------------
 @app.route('/visitas/codigo/<string:codigo>', methods=['GET'])
