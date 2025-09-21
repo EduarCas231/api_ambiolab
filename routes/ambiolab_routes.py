@@ -494,11 +494,14 @@ def crear_pedido():
     db = None
     try:
         data = request.json
+        ot = data.get('ot')
         nombre = data.get('nombre')
         norma = data.get('norma')
+        parametros = data.get('parametros')
         estatus = data.get('estatus', 'pendiente')
         fecha_inicio = data.get('fecha_inicio')
         fecha_final = data.get('fecha_final')
+        dtuser = data.get('dtuser')
         comentario = data.get('comentario')
         precio = data.get('precio')
 
@@ -508,10 +511,10 @@ def crear_pedido():
         db = get_db_connection_visitas()
         with db.cursor() as cursor:
             query = """
-                INSERT INTO pedidos (nombre, norma, estatus, fecha_inicio, fecha_final, comentario, precio)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO pedidos (ot, nombre, norma, parametros, estatus, fecha_inicio, fecha_final, dtuser, comentario, precio)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
-            cursor.execute(query, (nombre, norma, estatus, fecha_inicio, fecha_final, comentario, precio))
+            cursor.execute(query, (ot, nombre, norma, parametros, estatus, fecha_inicio, fecha_final, dtuser, comentario, precio))
             db.commit()
             nuevo_id = cursor.lastrowid
 
@@ -531,11 +534,14 @@ def actualizar_pedido(id_pedidos):
             return jsonify({'error': 'Token inválido o expirado'}), 401
 
         data = request.json
+        ot = data.get('ot')
         nombre = data.get('nombre')
         norma = data.get('norma')
+        parametros = data.get('parametros')
         estatus = data.get('estatus')
         fecha_inicio = data.get('fecha_inicio')
         fecha_final = data.get('fecha_final')
+        dtuser = data.get('dtuser')
         comentario = data.get('comentario')
         precio = data.get('precio')
 
@@ -543,11 +549,11 @@ def actualizar_pedido(id_pedidos):
         with db.cursor() as cursor:
             query = """
                 UPDATE pedidos
-                SET nombre=%s, norma=%s, estatus=%s, fecha_inicio=%s,
-                    fecha_final=%s, comentario=%s, precio=%s, modificado_por=%s
+                SET ot=%s, nombre=%s, norma=%s, parametros=%s, estatus=%s, fecha_inicio=%s,
+                    fecha_final=%s, dtuser=%s, comentario=%s, precio=%s, modificado_por=%s
                 WHERE id_pedidos=%s
             """
-            cursor.execute(query, (nombre, norma, estatus, fecha_inicio, fecha_final, comentario, precio, usuario_id, id_pedidos))
+            cursor.execute(query, (ot, nombre, norma, parametros, estatus, fecha_inicio, fecha_final, dtuser, comentario, precio, usuario_id, id_pedidos))
             db.commit()
 
             if cursor.rowcount == 0:

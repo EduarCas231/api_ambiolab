@@ -6,17 +6,16 @@ class Config:
     
     # Database configurations
     DB_LABSA = {
-        'host': "apislab.duckdns.org",
+        'host': "127.0.0.1",
         'user': "adminfull",
         'password': "222310342",
         'database': "labsa",
-        'port': 53307
+        'port': 3308
     }
     
     DB_AMBIOLAB = {
-        'host': "apislab.duckdns.org",
+        'host': "localhost",
         'user': "adminfull",
         'password': "222310342",
         'database': "ambiolab",
-        'port': 53307
-    }
+        'port': 3308    }
