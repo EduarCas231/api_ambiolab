@@ -9,7 +9,7 @@ from routes.noticias_routes import noticias_bp
 from routes.visitas_routes import visitas_bp
 from routes.notificaciones_routes import notificaciones_bp
 from routes.ambiolab_routes import ambiolab_bp
-from upload_routes import upload_bp
+from routes.savelook import savelook_bp
 
 def create_app():
     app = Flask(__name__)
@@ -25,7 +25,7 @@ def create_app():
     app.register_blueprint(visitas_bp)
     app.register_blueprint(notificaciones_bp)
     app.register_blueprint(ambiolab_bp)
-    app.register_blueprint(upload_bp)
+    app.register_blueprint(savelook_bp)
     
     return app
 

@@ -1,4 +1,5 @@
 import pymysql
+from pymongo import MongoClient
 from config import Config
 
 def get_db_connection_usuarios():
@@ -12,3 +13,6 @@ def get_db_connection_visitas():
         **Config.DB_AMBIOLAB,
         cursorclass=pymysql.cursors.DictCursor
     )
+
+def get_db_connection_mongo():
+    return MongoClient(Config.DB_SAVELOOK['uri'])
