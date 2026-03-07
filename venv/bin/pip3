@@ -1,4 +1,4 @@
-#!/opt/flask_app/venv/bin/python
+#!/opt/flask_app/venv/bin/python3
 # -*- coding: utf-8 -*-
 import re
 import sys

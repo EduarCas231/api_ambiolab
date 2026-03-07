@@ -1,0 +1,38 @@
+[2025-12-19 10:54:23 -0600] [18261] [INFO] Starting gunicorn 23.0.0
+[2025-12-19 10:54:23 -0600] [18261] [INFO] Listening at: http://127.0.0.1:8000 (18261)
+[2025-12-19 10:54:23 -0600] [18261] [INFO] Using worker: sync
+[2025-12-19 10:54:23 -0600] [18262] [INFO] Booting worker with pid: 18262
+[2025-12-19 10:54:23 -0600] [18263] [INFO] Booting worker with pid: 18263
+[2025-12-19 10:54:23 -0600] [18264] [INFO] Booting worker with pid: 18264
+[2025-12-19 10:54:24 -0600] [18265] [INFO] Booting worker with pid: 18265
+[2025-12-19 10:56:04 -0600] [18261] [INFO] Handling signal: int
+[2025-12-19 10:56:04 -0600] [18263] [INFO] Worker exiting (pid: 18263)
+[2025-12-19 10:56:04 -0600] [18265] [INFO] Worker exiting (pid: 18265)
+[2025-12-19 10:56:04 -0600] [18264] [INFO] Worker exiting (pid: 18264)
+[2025-12-19 10:56:04 -0600] [18262] [INFO] Worker exiting (pid: 18262)
+[2025-12-19 10:56:04 -0600] [18261] [INFO] Shutting down: Master
+[2025-12-19 10:56:59 -0600] [18347] [INFO] Starting gunicorn 23.0.0
+[2025-12-19 10:56:59 -0600] [18347] [ERROR] Connection in use: ('127.0.0.1', 8000)
+[2025-12-19 10:56:59 -0600] [18347] [ERROR] connection to ('127.0.0.1', 8000) failed: [Errno 98] Address already in use
+[2025-12-19 10:57:00 -0600] [18347] [ERROR] Connection in use: ('127.0.0.1', 8000)
+[2025-12-19 10:57:00 -0600] [18347] [ERROR] connection to ('127.0.0.1', 8000) failed: [Errno 98] Address already in use
+[2025-12-19 10:57:01 -0600] [18347] [ERROR] Connection in use: ('127.0.0.1', 8000)
+[2025-12-19 10:57:01 -0600] [18347] [ERROR] connection to ('127.0.0.1', 8000) failed: [Errno 98] Address already in use
+[2025-12-19 10:57:02 -0600] [18347] [ERROR] Connection in use: ('127.0.0.1', 8000)
+[2025-12-19 10:57:02 -0600] [18347] [ERROR] connection to ('127.0.0.1', 8000) failed: [Errno 98] Address already in use
+[2025-12-19 10:57:03 -0600] [18347] [ERROR] Connection in use: ('127.0.0.1', 8000)
+[2025-12-19 10:57:03 -0600] [18347] [ERROR] connection to ('127.0.0.1', 8000) failed: [Errno 98] Address already in use
+[2025-12-19 10:57:04 -0600] [18347] [ERROR] Can't connect to ('127.0.0.1', 8000)
+[2025-12-19 11:00:29 -0600] [18437] [INFO] Starting gunicorn 23.0.0
+[2025-12-19 11:00:29 -0600] [18437] [INFO] Listening at: http://127.0.0.1:8000 (18437)
+[2025-12-19 11:00:29 -0600] [18437] [INFO] Using worker: sync
+[2025-12-19 11:00:29 -0600] [18438] [INFO] Booting worker with pid: 18438
+[2025-12-19 11:00:29 -0600] [18439] [INFO] Booting worker with pid: 18439
+[2025-12-19 11:00:29 -0600] [18440] [INFO] Booting worker with pid: 18440
+[2025-12-19 11:00:29 -0600] [18441] [INFO] Booting worker with pid: 18441
+[2025-12-19 11:06:39 -0600] [18437] [INFO] Handling signal: int
+[2025-12-19 11:06:39 -0600] [18440] [INFO] Worker exiting (pid: 18440)
+[2025-12-19 11:06:39 -0600] [18439] [INFO] Worker exiting (pid: 18439)
+[2025-12-19 11:06:39 -0600] [18441] [INFO] Worker exiting (pid: 18441)
+[2025-12-19 11:06:39 -0600] [18438] [INFO] Worker exiting (pid: 18438)
+[2025-12-19 11:06:39 -0600] [18437] [INFO] Shutting down: Master

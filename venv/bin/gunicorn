@@ -1,4 +1,4 @@
-#!/opt/flask_app/venv/bin/python
+#!/opt/flask_app/venv/bin/python3
 import sys
 from gunicorn.app.wsgiapp import run
 if __name__ == '__main__':
