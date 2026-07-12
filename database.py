@@ -16,3 +16,7 @@ def get_db_connection_visitas():
 
 def get_db_connection_mongo():
     return MongoClient(Config.DB_SAVELOOK['uri'])
+
+def get_db(db_name: str = 'climax'):
+    client = MongoClient(Config.DB_SAVELOOK['uri'])
+    return client[db_name]
