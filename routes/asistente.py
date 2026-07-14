@@ -89,7 +89,7 @@ def unirse_sesion():
             cursor.execute("SELECT COUNT(*) AS total FROM asistencia_sesion WHERE id_sesion = %s", (sesion['id'],))
             ocupados = cursor.fetchone()['total']
             enviar_push(info['id_user_organizador'], '👥 Nuevo asistente', f'{nombre} se unió a "{info["titulo"]}" ({ocupados}/{info["capacidad"] or "∞"})')
-            # SSE: actualizar conteo en tiempo real para todos los inscritos
+
             cursor.execute("""
                 SELECT DISTINCT u.id FROM asistencia_sesion asis
                 JOIN asistentes a ON asis.id_asistente = a.id
@@ -97,7 +97,11 @@ def unirse_sesion():
                 WHERE asis.id_sesion = %s
             """, (sesion['id'],))
             ids_inscritos = [row['id'] for row in cursor.fetchall()]
-            notificar_usuarios(ids_inscritos, 'asistentes_actualizado', {
+
+            destinatarios = set(ids_inscritos)
+            destinatarios.add(info['id_user_organizador'])
+
+            notificar_usuarios(list(destinatarios), 'asistentes_actualizado', {
                 'id_sesion': sesion['id'],
                 'ocupados': ocupados,
                 'capacidad': info['capacidad']
@@ -112,7 +116,6 @@ def unirse_sesion():
     finally:
         if db:
             db.close()
-
 
 @asistente_bp.route('/sesion/<int:id_sesion>', methods=['GET'])
 def obtener_asistentes(id_sesion):
@@ -129,10 +132,17 @@ def obtener_asistentes(id_sesion):
             if not sesion:
                 return jsonify({'error': 'Sesión no encontrada'}), 404
 
+            # 👇 FIX: se agrega el JOIN con "users" para traer también el "username".
+            # Antes solo se traía nombre/email desde la tabla "asistentes", y el
+            # frontend (Home.jsx/Eventos.jsx) compara sesion.asistentes por
+            # "username" para saber si el usuario logueado ya está registrado.
+            # Como ese campo nunca llegaba, la comparación siempre fallaba y
+            # el evento recién unido nunca aparecía en Home.
             cursor.execute("""
-                SELECT asis.id, a.nombre, a.email, a.status, asis.hora_ingreso
+                SELECT asis.id, a.nombre, a.email, a.status, asis.hora_ingreso, u.username
                 FROM asistencia_sesion asis
                 JOIN asistentes a ON asis.id_asistente = a.id
+                LEFT JOIN users u ON u.email = a.email
                 WHERE asis.id_sesion = %s
                 ORDER BY asis.hora_ingreso ASC
             """, (id_sesion,))

@@ -149,7 +149,6 @@ def editar_sesion(id):
                 if cursor.fetchone():
                     return jsonify({'error': 'El code ya está en uso'}), 400
 
-            # Obtener sala anterior para detectar cambio
             cursor.execute("SELECT sala FROM sesion WHERE id = %s", (id,))
             sala_anterior = cursor.fetchone()['sala']
 
@@ -161,7 +160,6 @@ def editar_sesion(id):
             )
             db.commit()
 
-            # Notificar inscritos: siempre al editar, con detalle si cambió sala
             cursor.execute("""
                 SELECT DISTINCT u.id FROM asistencia_sesion asis
                 JOIN asistentes a ON asis.id_asistente = a.id
@@ -170,15 +168,20 @@ def editar_sesion(id):
             """, (id,))
             mensaje = f'Sala: {sala or "—"} (antes: {sala_anterior or "—"}), Fecha: {fecha or "—"}' if sala != sala_anterior else f'Fecha: {fecha or "—"}, Sala: {sala or "—"}'
             ids_inscritos = [row['id'] for row in cursor.fetchall()]
+
             for uid in ids_inscritos:
                 enviar_push(uid, '📝 Evento actualizado', f'"{titulo}" fue modificado. {mensaje}')
-            # SSE: empujar datos actualizados a clientes conectados
+
+            # 👇 FIX: incluir SIEMPRE al organizador en la lista de destinatarios del SSE
+            destinatarios = set(ids_inscritos)
+            destinatarios.add(usuario_id)
+
             sesion_actualizada = serializar({
                 'id': id, 'titulo': titulo, 'sala': sala, 'code': code,
                 'capacidad': capacidad, 'detalles': detalles, 'fecha': fecha,
                 'hora_inicio': hora_inicio, 'hora_fin': hora_fin, 'zona': zona, 'tipo': tipo
             })
-            notificar_usuarios(ids_inscritos, 'sesion_actualizada', sesion_actualizada)
+            notificar_usuarios(list(destinatarios), 'sesion_actualizada', sesion_actualizada)
 
             return jsonify({'message': 'Sesión actualizada'}), 200
     except Exception as e:
@@ -205,23 +208,24 @@ def eliminar_sesion(id):
             cursor.execute("SELECT titulo FROM sesion WHERE id = %s", (id,))
             titulo_sesion = cursor.fetchone()['titulo']
 
-            # Notificar a inscritos ANTES de borrar
             cursor.execute("""
                 SELECT DISTINCT u.id FROM asistencia_sesion asis
                 JOIN asistentes a ON asis.id_asistente = a.id
                 JOIN users u ON u.email = a.email
                 WHERE asis.id_sesion = %s
             """, (id,))
-            inscritos = cursor.fetchall()
-            ids_inscritos = [row['id'] for row in inscritos]
+            ids_inscritos = [row['id'] for row in cursor.fetchall()]
 
             cursor.execute("DELETE FROM sesion WHERE id = %s", (id,))
             db.commit()
 
             for uid in ids_inscritos:
                 enviar_push(uid, '🗑️ Evento cancelado', f'El evento "{titulo_sesion}" fue eliminado por el organizador.')
-            # SSE: notificar eliminación
-            notificar_usuarios(ids_inscritos, 'sesion_eliminada', {'id': id})
+
+            # 👇 FIX: incluir al organizador también aquí
+            destinatarios = set(ids_inscritos)
+            destinatarios.add(usuario_id)
+            notificar_usuarios(list(destinatarios), 'sesion_eliminada', {'id': id})
 
             return jsonify({'message': 'Sesión eliminada'}), 200
     except Exception as e:
