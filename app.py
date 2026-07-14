@@ -2,38 +2,22 @@ from flask import Flask
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from config import Config
-
-# Import blueprints
 from routes.auth_routes import auth_bp
-from routes.pedidos_routes import pedidos_bp
-from routes.noticias_routes import noticias_bp
-from routes.visitas_routes import visitas_bp
-from routes.notificaciones_routes import notificaciones_bp
-from routes.ambiolab_routes import ambiolab_bp
-from routes.savelook import savelook_bp
-from routes.sensor import sensor_bp
+from routes.sesion import sesion_bp
+from routes.asistente import asistente_bp
+from routes.push_routes import push_bp
+from routes.sse import sse_bp
 
 def create_app():
     app = Flask(__name__)
     CORS(app)
-    
-    # Configuration
-    app.config['UPLOAD_FOLDER'] = Config.UPLOAD_FOLDER
     app.config['JWT_SECRET_KEY'] = Config.SECRET_KEY
-    
-    # Initialize JWT
-    jwt = JWTManager(app)
-    
-    # Register blueprints
+    JWTManager(app)
     app.register_blueprint(auth_bp)
-    app.register_blueprint(pedidos_bp)
-    app.register_blueprint(noticias_bp)
-    app.register_blueprint(visitas_bp)
-    app.register_blueprint(notificaciones_bp)
-    app.register_blueprint(ambiolab_bp)
-    app.register_blueprint(sensor_bp)
-    app.register_blueprint(savelook_bp, url_prefix='/api/savelook')
-    
+    app.register_blueprint(sesion_bp)
+    app.register_blueprint(asistente_bp)
+    app.register_blueprint(push_bp)
+    app.register_blueprint(sse_bp)
     return app
 
 app = create_app()

@@ -1,5 +1,4 @@
 import pymysql
-from pymongo import MongoClient
 from config import Config
 
 def get_db_connection_usuarios():
@@ -7,16 +6,3 @@ def get_db_connection_usuarios():
         **Config.DB_LABSA,
         cursorclass=pymysql.cursors.DictCursor
     )
-
-def get_db_connection_visitas():
-    return pymysql.connect(
-        **Config.DB_AMBIOLAB,
-        cursorclass=pymysql.cursors.DictCursor
-    )
-
-def get_db_connection_mongo():
-    return MongoClient(Config.DB_SAVELOOK['uri'])
-
-def get_db(db_name: str = 'climax'):
-    client = MongoClient(Config.DB_SAVELOOK['uri'])
-    return client[db_name]

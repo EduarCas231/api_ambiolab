@@ -13,6 +13,9 @@ def generar_token(usuario_id):
 
 def verificar_token_request():
     token = request.headers.get('Authorization')
+    # SSE no soporta headers, acepta token por query param
+    if not token:
+        token = request.args.get('token')
     if not token:
         return None
     try:
