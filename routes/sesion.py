@@ -77,7 +77,7 @@ def obtener_sesiones():
         with db.cursor() as cursor:
             cursor.execute("""
                 SELECT s.id, s.titulo, s.sala, s.code, s.capacidad, s.detalles,
-                       s.fecha, s.hora_inicio, s.hora_fin, s.zona, s.tipo, s.created_at,
+                       s.fecha, s.hora_inicio, s.hora_fin, s.zona, s.tipo, s.estado, s.created_at,
                        u.username AS organizador
                 FROM sesion s
                 LEFT JOIN users u ON s.id_user_organizador = u.id
@@ -100,7 +100,7 @@ def obtener_sesion(id):
         with db.cursor() as cursor:
             cursor.execute("""
                 SELECT s.id, s.titulo, s.sala, s.code, s.capacidad, s.detalles,
-                       s.fecha, s.hora_inicio, s.hora_fin, s.zona, s.tipo, s.created_at,
+                       s.fecha, s.hora_inicio, s.hora_fin, s.zona, s.tipo, s.estado, s.created_at,
                        u.username AS organizador
                 FROM sesion s
                 LEFT JOIN users u ON s.id_user_organizador = u.id
@@ -149,15 +149,30 @@ def editar_sesion(id):
                 if cursor.fetchone():
                     return jsonify({'error': 'El code ya está en uso'}), 400
 
-            cursor.execute("SELECT sala FROM sesion WHERE id = %s", (id,))
-            sala_anterior = cursor.fetchone()['sala']
-
-            cursor.execute(
-                """UPDATE sesion SET titulo=%s, sala=%s, code=%s, capacidad=%s, detalles=%s,
-                   fecha=%s, hora_inicio=%s, hora_fin=%s, zona=%s, tipo=%s, password=%s
-                   WHERE id=%s""",
-                (titulo, sala, code, capacidad, detalles, fecha, hora_inicio, hora_fin, zona, tipo, password, id)
+            cursor.execute("SELECT sala, fecha, hora_inicio, hora_fin FROM sesion WHERE id = %s", (id,))
+            anterior = cursor.fetchone()
+            sala_anterior = anterior['sala']
+            horario_cambio = (
+                str(anterior['fecha']) != str(fecha) or
+                str(anterior['hora_inicio']) != str(hora_inicio) or
+                str(anterior['hora_fin']) != str(hora_fin)
             )
+
+            if horario_cambio:
+                cursor.execute(
+                    """UPDATE sesion SET titulo=%s, sala=%s, code=%s, capacidad=%s, detalles=%s,
+                       fecha=%s, hora_inicio=%s, hora_fin=%s, zona=%s, tipo=%s, password=%s,
+                       notif_5min_enviada=0, notif_inicio_enviada=0, notif_fin_enviada=0
+                       WHERE id=%s""",
+                    (titulo, sala, code, capacidad, detalles, fecha, hora_inicio, hora_fin, zona, tipo, password, id)
+                )
+            else:
+                cursor.execute(
+                    """UPDATE sesion SET titulo=%s, sala=%s, code=%s, capacidad=%s, detalles=%s,
+                       fecha=%s, hora_inicio=%s, hora_fin=%s, zona=%s, tipo=%s, password=%s
+                       WHERE id=%s""",
+                    (titulo, sala, code, capacidad, detalles, fecha, hora_inicio, hora_fin, zona, tipo, password, id)
+                )
             db.commit()
 
             cursor.execute("""
@@ -172,7 +187,6 @@ def editar_sesion(id):
             for uid in ids_inscritos:
                 enviar_push(uid, '📝 Evento actualizado', f'"{titulo}" fue modificado. {mensaje}')
 
-            # 👇 FIX: incluir SIEMPRE al organizador en la lista de destinatarios del SSE
             destinatarios = set(ids_inscritos)
             destinatarios.add(usuario_id)
 
@@ -216,13 +230,13 @@ def eliminar_sesion(id):
             """, (id,))
             ids_inscritos = [row['id'] for row in cursor.fetchall()]
 
+            cursor.execute("DELETE FROM asistencia_sesion WHERE id_sesion = %s", (id,))
             cursor.execute("DELETE FROM sesion WHERE id = %s", (id,))
             db.commit()
 
             for uid in ids_inscritos:
                 enviar_push(uid, '🗑️ Evento cancelado', f'El evento "{titulo_sesion}" fue eliminado por el organizador.')
 
-            # 👇 FIX: incluir al organizador también aquí
             destinatarios = set(ids_inscritos)
             destinatarios.add(usuario_id)
             notificar_usuarios(list(destinatarios), 'sesion_eliminada', {'id': id})
@@ -233,3 +247,80 @@ def eliminar_sesion(id):
     finally:
         if db:
             db.close()
+
+
+def _cambiar_estado_sesion(id, usuario_id, nuevo_estado, estado_requerido, titulo_push, mensaje_push):
+    """Función compartida por /iniciar y /finalizar: valida permiso y estado
+    actual, cambia el estado, y notifica por push + SSE a todos los
+    involucrados (organizador + inscritos)."""
+    db = None
+    try:
+        db = get_db_connection_usuarios()
+        with db.cursor() as cursor:
+            cursor.execute(
+                "SELECT titulo, estado FROM sesion WHERE id = %s AND id_user_organizador = %s",
+                (id, usuario_id)
+            )
+            sesion = cursor.fetchone()
+            if not sesion:
+                return jsonify({'error': 'Sesión no encontrada o sin permiso'}), 404
+
+            if estado_requerido and sesion['estado'] != estado_requerido:
+                return jsonify({
+                    'error': f'La sesión debe estar "{estado_requerido}" para hacer esto (estado actual: "{sesion["estado"]}")'
+                }), 400
+
+            cursor.execute("UPDATE sesion SET estado = %s WHERE id = %s", (nuevo_estado, id))
+            db.commit()
+
+            cursor.execute("""
+                SELECT DISTINCT u.id FROM asistencia_sesion asis
+                JOIN asistentes a ON asis.id_asistente = a.id
+                JOIN users u ON u.email = a.email
+                WHERE asis.id_sesion = %s
+            """, (id,))
+            ids_inscritos = [row['id'] for row in cursor.fetchall()]
+
+            for uid in ids_inscritos:
+                enviar_push(uid, titulo_push, mensaje_push.format(titulo=sesion['titulo']))
+
+            destinatarios = set(ids_inscritos)
+            destinatarios.add(usuario_id)
+            notificar_usuarios(list(destinatarios), 'sesion_actualizada', {'id': id, 'estado': nuevo_estado})
+
+            return jsonify({'message': f'Sesión marcada como {nuevo_estado}', 'estado': nuevo_estado}), 200
+    except Exception as e:
+        return jsonify({'error': 'Error en la base de datos', 'detalle': str(e)}), 500
+    finally:
+        if db:
+            db.close()
+
+
+@sesion_bp.route('/<int:id>/iniciar', methods=['PUT'])
+def iniciar_sesion(id):
+    usuario_id = verificar_token_request()
+    if not usuario_id:
+        return jsonify({'error': 'Token inválido o expirado'}), 401
+
+    return _cambiar_estado_sesion(
+        id, usuario_id,
+        nuevo_estado='en_curso',
+        estado_requerido='pendiente',
+        titulo_push='🟢 {titulo} ha comenzado',
+        mensaje_push='El evento ya está en curso.'
+    )
+
+
+@sesion_bp.route('/<int:id>/finalizar', methods=['PUT'])
+def finalizar_sesion(id):
+    usuario_id = verificar_token_request()
+    if not usuario_id:
+        return jsonify({'error': 'Token inválido o expirado'}), 401
+
+    return _cambiar_estado_sesion(
+        id, usuario_id,
+        nuevo_estado='finalizado',
+        estado_requerido='en_curso',
+        titulo_push='🏁 {titulo} ha finalizado',
+        mensaje_push='Gracias por participar.'
+    )

@@ -1,9 +1,12 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, send_file
 from database import get_db_connection_usuarios
 from auth import verificar_token_request
 from datetime import timedelta
 from routes.push_routes import enviar_push
 from routes.sse import notificar_usuario, notificar_usuarios
+import secrets
+import io
+import qrcode
 
 def serializar(row):
     result = {}
@@ -77,13 +80,14 @@ def unirse_sesion():
             if cursor.fetchone():
                 return jsonify({'error': 'Ya estás registrado en este evento'}), 400
 
+            qr_token = secrets.token_urlsafe(32)
+
             cursor.execute(
-                "INSERT INTO asistencia_sesion (id_asistente, id_sesion) VALUES (%s, %s)",
-                (id_asistente, sesion['id'])
+                "INSERT INTO asistencia_sesion (id_asistente, id_sesion, qr_token) VALUES (%s, %s, %s)",
+                (id_asistente, sesion['id'], qr_token)
             )
             db.commit()
 
-            # Notificar al organizador que alguien se unió
             cursor.execute("SELECT titulo, id_user_organizador, capacidad FROM sesion WHERE id = %s", (sesion['id'],))
             info = cursor.fetchone()
             cursor.execute("SELECT COUNT(*) AS total FROM asistencia_sesion WHERE id_sesion = %s", (sesion['id'],))
@@ -132,14 +136,9 @@ def obtener_asistentes(id_sesion):
             if not sesion:
                 return jsonify({'error': 'Sesión no encontrada'}), 404
 
-            # 👇 FIX: se agrega el JOIN con "users" para traer también el "username".
-            # Antes solo se traía nombre/email desde la tabla "asistentes", y el
-            # frontend (Home.jsx/Eventos.jsx) compara sesion.asistentes por
-            # "username" para saber si el usuario logueado ya está registrado.
-            # Como ese campo nunca llegaba, la comparación siempre fallaba y
-            # el evento recién unido nunca aparecía en Home.
             cursor.execute("""
-                SELECT asis.id, a.nombre, a.email, a.status, asis.hora_ingreso, u.username
+                SELECT asis.id, a.nombre, a.email, a.status, asis.hora_ingreso,
+                       asis.presente, asis.check_in_hora, u.username
                 FROM asistencia_sesion asis
                 JOIN asistentes a ON asis.id_asistente = a.id
                 LEFT JOIN users u ON u.email = a.email
@@ -225,3 +224,169 @@ def eliminar_asistente(id_asistencia):
     finally:
         if db:
             db.close()
+
+
+@asistente_bp.route('/mi-qr/<int:id_sesion>', methods=['GET'])
+def mi_qr(id_sesion):
+    """Devuelve la imagen PNG del pase QR del usuario logueado para una
+    sesión específica a la que esté registrado (organizador o asistente)."""
+    usuario_id = verificar_token_request()
+    if not usuario_id:
+        return jsonify({'error': 'Token inválido o expirado'}), 401
+
+    db = None
+    try:
+        db = get_db_connection_usuarios()
+        with db.cursor() as cursor:
+            cursor.execute("SELECT email FROM users WHERE id = %s", (usuario_id,))
+            user = cursor.fetchone()
+            if not user:
+                return jsonify({'error': 'Usuario no encontrado'}), 404
+
+            cursor.execute("""
+                SELECT asis.qr_token
+                FROM asistencia_sesion asis
+                JOIN asistentes a ON asis.id_asistente = a.id
+                WHERE asis.id_sesion = %s AND a.email = %s
+            """, (id_sesion, user['email']))
+            registro = cursor.fetchone()
+
+            if not registro or not registro['qr_token']:
+                return jsonify({'error': 'No estás registrado en este evento (o tu pase aún no tiene QR asignado)'}), 404
+
+            img = qrcode.make(registro['qr_token'])
+            buffer = io.BytesIO()
+            img.save(buffer, format='PNG')
+            buffer.seek(0)
+
+            return send_file(buffer, mimetype='image/png')
+    except Exception as e:
+        return jsonify({'error': 'Error en la base de datos', 'detalle': str(e)}), 500
+    finally:
+        if db:
+            db.close()
+
+
+@asistente_bp.route('/escanear', methods=['POST'])
+def escanear_qr():
+    """El organizador escanea el QR de un asistente en la entrada.
+    Marca presente=1 y registra la hora exacta de ingreso (check_in_hora),
+    que es lo que alimenta el panel de flujo por hora."""
+    usuario_id = verificar_token_request()
+    if not usuario_id:
+        return jsonify({'error': 'Token inválido o expirado'}), 401
+
+    data = request.json or {}
+    qr_token = data.get('qr_token')
+    if not qr_token:
+        return jsonify({'error': 'qr_token es requerido'}), 400
+
+    db = None
+    try:
+        db = get_db_connection_usuarios()
+        with db.cursor() as cursor:
+            cursor.execute("""
+                SELECT asis.id, asis.presente, asis.id_sesion,
+                       a.nombre, a.email,
+                       s.titulo, s.estado, s.id_user_organizador
+                FROM asistencia_sesion asis
+                JOIN asistentes a ON asis.id_asistente = a.id
+                JOIN sesion s ON asis.id_sesion = s.id
+                WHERE asis.qr_token = %s
+            """, (qr_token,))
+            registro = cursor.fetchone()
+
+            if not registro:
+                return jsonify({'error': 'Código QR no válido o no reconocido'}), 404
+
+            if registro['id_user_organizador'] != usuario_id:
+                return jsonify({'error': 'No tienes permiso para escanear pases de este evento'}), 403
+
+            if registro['estado'] != 'en_curso':
+                return jsonify({
+                    'error': f'El evento debe estar "en_curso" para registrar entradas (estado actual: "{registro["estado"]}")'
+                }), 400
+
+            if registro['presente']:
+                return jsonify({
+                    'message': 'Este pase ya había sido escaneado antes',
+                    'ya_registrado': True,
+                    'nombre': registro['nombre'],
+                    'email': registro['email']
+                }), 200
+
+            cursor.execute(
+                "UPDATE asistencia_sesion SET presente = 1, check_in_hora = NOW() WHERE id = %s",
+                (registro['id'],)
+            )
+            db.commit()
+
+            notificar_usuario(usuario_id, 'asistencia_registrada', {
+                'id_sesion': registro['id_sesion'],
+                'nombre': registro['nombre']
+            })
+
+            return jsonify({
+                'message': f'✅ {registro["nombre"]} — entrada registrada',
+                'ya_registrado': False,
+                'nombre': registro['nombre'],
+                'email': registro['email']
+            }), 200
+    except Exception as e:
+        return jsonify({'error': 'Error en la base de datos', 'detalle': str(e)}), 500
+    finally:
+        if db:
+            db.close()
+
+
+@asistente_bp.route('/flujo/<int:id_sesion>', methods=['GET'])
+def flujo_por_hora(id_sesion):
+    """Devuelve, para el organizador, cuántas personas entraron (escanearon
+    su QR) agrupadas por hora — para la gráfica de nivel de flujo."""
+    usuario_id = verificar_token_request()
+    if not usuario_id:
+        return jsonify({'error': 'Token inválido o expirado'}), 401
+
+    db = None
+    try:
+        db = get_db_connection_usuarios()
+        with db.cursor() as cursor:
+            cursor.execute(
+                "SELECT id FROM sesion WHERE id = %s AND id_user_organizador = %s",
+                (id_sesion, usuario_id)
+            )
+            if not cursor.fetchone():
+                return jsonify({'error': 'Sesión no encontrada o sin permiso'}), 404
+
+            cursor.execute("""
+                SELECT DATE_FORMAT(check_in_hora, '%%Y-%%m-%%d %%H:00') AS hora, COUNT(*) AS total
+                FROM asistencia_sesion
+                WHERE id_sesion = %s AND check_in_hora IS NOT NULL
+                GROUP BY hora
+                ORDER BY hora
+            """, (id_sesion,))
+            por_hora = cursor.fetchall()
+
+            cursor.execute(
+                "SELECT COUNT(*) AS total FROM asistencia_sesion WHERE id_sesion = %s",
+                (id_sesion,)
+            )
+            total_registrados = cursor.fetchone()['total']
+
+            cursor.execute(
+                "SELECT COUNT(*) AS total FROM asistencia_sesion WHERE id_sesion = %s AND presente = 1",
+                (id_sesion,)
+            )
+            total_presentes = cursor.fetchone()['total']
+
+            return jsonify({
+                'total_registrados': total_registrados,
+                'total_presentes': total_presentes,
+                'por_hora': por_hora
+            }), 200
+    except Exception as e:
+        return jsonify({'error': 'Error en la base de datos', 'detalle': str(e)}), 500
+    finally:
+        if db:
+            db.close()
+

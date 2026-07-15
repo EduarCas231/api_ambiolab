@@ -26,7 +26,7 @@ def subscribe():
     try:
         db = get_db_connection_usuarios()
         with db.cursor() as cursor:
-            # Upsert por endpoint — cada dispositivo tiene su propio endpoint único
+            
             cursor.execute(
                 """INSERT INTO push_subscriptions (id_user, endpoint, p256dh, auth)
                    VALUES (%s, %s, %s, %s)
